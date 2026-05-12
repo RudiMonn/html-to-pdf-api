@@ -35,7 +35,7 @@ app.post("/generate-pdf", async (req, res) => {
 
         // Load HTML
         await page.setContent(html, {
-            waitUntil: "networkidle0"
+            waitUntil: "load"
         });
 
         // Generate PDF
@@ -74,7 +74,7 @@ app.post("/generate-pdf", async (req, res) => {
 });
 
 // Start server
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
     console.log(`PDF API running on port ${PORT}`);
