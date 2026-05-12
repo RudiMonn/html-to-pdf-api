@@ -37,8 +37,9 @@ app.post("/generate-pdf", async (req, res) => {
         await page.setContent(html, {
             waitUntil: "load"
         });
-
-        // Generate PDF
+        
+        await page.emulateMediaType("print");
+        
         const pdfBuffer = await page.pdf({
             format: "A4",
             printBackground: true,
