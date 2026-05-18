@@ -10,7 +10,7 @@ app.post("/generate-pdf", async (req, res) => {
     let browser;
 
     try {
-        const { html, fileName } = req.body;
+        const { html, fileName, pageSize, pageRotation } = req.body;
 
         // Validation
         if (!html) {
@@ -20,14 +20,47 @@ app.post("/generate-pdf", async (req, res) => {
             });
         }
 
+        // Allowed page sizes
+        const allowedPageSizes = [
+            "Letter",
+            "Legal",
+            "Tabloid",
+            "Ledger",
+            "A0",
+            "A1",
+            "A2",
+            "A3",
+            "A4",
+            "A5",
+            "A6"
+        ];
+
+        // Validate page size, default to A4
+        const selectedPageSize = allowedPageSizes.includes(pageSize)
+            ? pageSize
+            : "A4";
+
+        // Validate page rotation, default to portrait
+        // Accepted values from Power Apps / Flow:
+        // "portrait", "landscape", true, false
+        let isLandscape = false;
+
+        if (
+            pageRotation === "landscape" ||
+            pageRotation === "Landscape" ||
+            pageRotation === true
+        ) {
+            isLandscape = true;
+        }
+
         // Launch browser
         browser = await puppeteer.launch({
-          headless: "new",
-          args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage"
-          ]
+            headless: "new",
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage"
+            ]
         });
 
         // Create page
@@ -37,11 +70,12 @@ app.post("/generate-pdf", async (req, res) => {
         await page.setContent(html, {
             waitUntil: "load"
         });
-        
+
         await page.emulateMediaType("print");
-        
+
         const pdfBuffer = await page.pdf({
-            format: "A4",
+            format: selectedPageSize,
+            landscape: isLandscape,
             printBackground: true,
             preferCSSPageSize: true,
             margin: {
