@@ -6,13 +6,30 @@ const app = express();
 // Allows large HTML requests
 app.use(express.json({ limit: "50mb" }));
 
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 app.post("/generate-pdf", async (req, res) => {
     let browser;
 
     try {
-        const { html, fileName, pageSize, pageRotation } = req.body;
+        const {
+            html,
+            fileName,
+            pageSize,
+            pageRotation,
+            footerText,
+            showFooter,
+            showPageNumbers,
+            footerRev
+        } = req.body;
 
-        // Validation
         if (!html) {
             return res.status(400).json({
                 success: false,
@@ -20,7 +37,6 @@ app.post("/generate-pdf", async (req, res) => {
             });
         }
 
-        // Allowed page sizes
         const allowedPageSizes = [
             "Letter",
             "Legal",
@@ -35,25 +51,63 @@ app.post("/generate-pdf", async (req, res) => {
             "A6"
         ];
 
-        // Validate page size, default to A4
         const selectedPageSize = allowedPageSizes.includes(pageSize)
             ? pageSize
             : "A4";
 
-        // Validate page rotation, default to portrait
-        // Accepted values from Power Apps / Flow:
-        // "portrait", "landscape", true, false
-        let isLandscape = false;
-
-        if (
+        const isLandscape =
             pageRotation === "landscape" ||
             pageRotation === "Landscape" ||
-            pageRotation === true
-        ) {
-            isLandscape = true;
+            pageRotation === true;
+
+        const hasFooterText =
+            typeof footerText === "string" &&
+            footerText.trim() !== "";
+
+        const hasFooterRev =
+            typeof footerRev === "string" &&
+            footerRev.trim() !== "";
+
+        const shouldShowPageNumbers =
+            showPageNumbers === true ||
+            showPageNumbers === "true";
+
+        const shouldShowFooter =
+            showFooter === true ||
+            showFooter === "true" ||
+            hasFooterText ||
+            hasFooterRev ||
+            shouldShowPageNumbers;
+
+        let footerParts = [];
+
+        if (hasFooterText) {
+            footerParts.push(escapeHtml(footerText.trim()));
         }
 
-        // Launch browser
+        if (shouldShowPageNumbers) {
+            footerParts.push(`Page <span class="pageNumber"></span> of <span class="totalPages"></span>`);
+        }
+
+        if (hasFooterRev) {
+            footerParts.push(`Rev ${escapeHtml(footerRev.trim())}`);
+        }
+
+        const footerTemplate = shouldShowFooter
+            ? `
+                <div style="
+                    width: 100%;
+                    font-size: 7px;
+                    color: #4b5563;
+                    font-family: Arial, sans-serif;
+                    text-align: center;
+                    padding-bottom: 4px;
+                ">
+                    ${footerParts.join(" | ")}
+                </div>
+            `
+            : `<div></div>`;
+
         browser = await puppeteer.launch({
             headless: "new",
             args: [
@@ -63,10 +117,8 @@ app.post("/generate-pdf", async (req, res) => {
             ]
         });
 
-        // Create page
         const page = await browser.newPage();
 
-        // Load HTML
         await page.setContent(html, {
             waitUntil: "load"
         });
@@ -78,15 +130,19 @@ app.post("/generate-pdf", async (req, res) => {
             landscape: isLandscape,
             printBackground: true,
             preferCSSPageSize: true,
+
+            displayHeaderFooter: shouldShowFooter,
+            headerTemplate: `<div></div>`,
+            footerTemplate,
+
             margin: {
                 top: "0mm",
                 right: "0mm",
-                bottom: "0mm",
+                bottom: shouldShowFooter ? "8mm" : "0mm",
                 left: "0mm"
             }
         });
 
-        // Return PDF
         res.set({
             "Content-Type": "application/pdf",
             "Content-Disposition": `attachment; filename="${fileName || "document.pdf"}"`
@@ -109,7 +165,6 @@ app.post("/generate-pdf", async (req, res) => {
     }
 });
 
-// Start server
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
