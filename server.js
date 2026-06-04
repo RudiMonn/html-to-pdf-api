@@ -97,7 +97,7 @@ app.post("/generate-pdf", async (req, res) => {
             ? `
                 <div style="
                     width: 100%;
-                    font-size: 7px;
+                    font-size: 12px;
                     color: #4b5563;
                     font-family: Arial, sans-serif;
                     text-align: center;
@@ -138,7 +138,7 @@ app.post("/generate-pdf", async (req, res) => {
             margin: {
                 top: "0mm",
                 right: "0mm",
-                bottom: shouldShowFooter ? "8mm" : "0mm",
+                bottom: shouldShowFooter ? "15mm" : "0mm",
                 left: "0mm"
             }
         });
