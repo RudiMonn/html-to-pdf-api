@@ -1,5 +1,8 @@
 const express = require("express");
 const puppeteer = require("puppeteer");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
 
 const app = express();
 
@@ -14,6 +17,30 @@ function escapeHtml(value) {
         .replace(/'/g, "&#039;");
 }
 
+function isTruthy(value) {
+    return value === true ||
+        value === "true" ||
+        value === "True" ||
+        value === "YES" ||
+        value === "Yes" ||
+        value === "yes";
+}
+
+app.get("/temp/:fileName", (req, res) => {
+    const filePath = path.join("/tmp", req.params.fileName);
+
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).send("PDF expired or not found");
+    }
+
+    res.set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${req.params.fileName}"`
+    });
+
+    res.sendFile(filePath);
+});
+
 app.post("/generate-pdf", async (req, res) => {
     let browser;
 
@@ -27,7 +54,8 @@ app.post("/generate-pdf", async (req, res) => {
             showFooter,
             showPageNumbers,
             footerRev,
-            returnBase64
+            returnBase64,
+            returnTempUrl
         } = req.body;
 
         if (!html) {
@@ -37,15 +65,18 @@ app.post("/generate-pdf", async (req, res) => {
             });
         }
 
-        const shouldReturnBase64 =
-            returnBase64 === true ||
-            returnBase64 === "true" ||
-            returnBase64 === "Yes" ||
-            returnBase64 === "yes";
-
         const allowedPageSizes = [
-            "Letter", "Legal", "Tabloid", "Ledger",
-            "A0", "A1", "A2", "A3", "A4", "A5", "A6"
+            "Letter",
+            "Legal",
+            "Tabloid",
+            "Ledger",
+            "A0",
+            "A1",
+            "A2",
+            "A3",
+            "A4",
+            "A5",
+            "A6"
         ];
 
         const selectedPageSize = allowedPageSizes.includes(pageSize)
@@ -65,25 +96,24 @@ app.post("/generate-pdf", async (req, res) => {
             typeof footerRev === "string" &&
             footerRev.trim() !== "";
 
-        const shouldShowPageNumbers =
-            showPageNumbers === true ||
-            showPageNumbers === "true";
+        const shouldShowPageNumbers = isTruthy(showPageNumbers);
 
         const shouldShowFooter =
-            showFooter === true ||
-            showFooter === "true" ||
+            isTruthy(showFooter) ||
             hasFooterText ||
             hasFooterRev ||
             shouldShowPageNumbers;
 
-        let footerParts = [];
+        const footerParts = [];
 
         if (hasFooterText) {
             footerParts.push(escapeHtml(footerText.trim()));
         }
 
         if (shouldShowPageNumbers) {
-            footerParts.push(`Page <span class="pageNumber"></span> of <span class="totalPages"></span>`);
+            footerParts.push(
+                `Page <span class="pageNumber"></span> of <span class="totalPages"></span>`
+            );
         }
 
         if (hasFooterRev) {
@@ -140,21 +170,48 @@ app.post("/generate-pdf", async (req, res) => {
             }
         });
 
-        const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
+        const outputFileName = fileName || "document.pdf";
 
-        if (shouldReturnBase64) {
+        if (isTruthy(returnBase64)) {
+            const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
+
             return res.json({
                 success: true,
-                fileName: fileName || "document.pdf",
+                fileName: outputFileName,
                 mimeType: "application/pdf",
-                pdfBase64: pdfBase64,
+                pdfBase64,
                 pdfDataUri: `data:application/pdf;base64,${pdfBase64}`
+            });
+        }
+
+        if (isTruthy(returnTempUrl)) {
+            const tempFileName = `${crypto.randomUUID()}-${outputFileName}`;
+            const filePath = path.join("/tmp", tempFileName);
+
+            fs.writeFileSync(filePath, pdfBuffer);
+
+            setTimeout(() => {
+                try {
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                        console.log(`Deleted temporary PDF: ${tempFileName}`);
+                    }
+                } catch (deleteError) {
+                    console.error("Failed to delete temporary PDF:", deleteError);
+                }
+            }, 5 * 60 * 1000);
+
+            return res.json({
+                success: true,
+                fileName: outputFileName,
+                pdfUrl: `${req.protocol}://${req.get("host")}/temp/${tempFileName}`,
+                expiresInMinutes: 5
             });
         }
 
         res.set({
             "Content-Type": "application/pdf",
-            "Content-Disposition": `attachment; filename="${fileName || "document.pdf"}"`
+            "Content-Disposition": `attachment; filename="${outputFileName}"`
         });
 
         res.send(pdfBuffer);
