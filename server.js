@@ -3,7 +3,6 @@ const puppeteer = require("puppeteer");
 
 const app = express();
 
-// Allows large HTML requests
 app.use(express.json({ limit: "50mb" }));
 
 function escapeHtml(value) {
@@ -27,7 +26,8 @@ app.post("/generate-pdf", async (req, res) => {
             footerText,
             showFooter,
             showPageNumbers,
-            footerRev
+            footerRev,
+            returnBase64
         } = req.body;
 
         if (!html) {
@@ -37,18 +37,15 @@ app.post("/generate-pdf", async (req, res) => {
             });
         }
 
+        const shouldReturnBase64 =
+            returnBase64 === true ||
+            returnBase64 === "true" ||
+            returnBase64 === "Yes" ||
+            returnBase64 === "yes";
+
         const allowedPageSizes = [
-            "Letter",
-            "Legal",
-            "Tabloid",
-            "Ledger",
-            "A0",
-            "A1",
-            "A2",
-            "A3",
-            "A4",
-            "A5",
-            "A6"
+            "Letter", "Legal", "Tabloid", "Ledger",
+            "A0", "A1", "A2", "A3", "A4", "A5", "A6"
         ];
 
         const selectedPageSize = allowedPageSizes.includes(pageSize)
@@ -142,6 +139,16 @@ app.post("/generate-pdf", async (req, res) => {
                 left: "0mm"
             }
         });
+
+        if (shouldReturnBase64) {
+            return res.json({
+                success: true,
+                fileName: fileName || "document.pdf",
+                mimeType: "application/pdf",
+                pdfBase64: pdfBuffer.toString("base64"),
+                pdfDataUri: `data:application/pdf;base64,${pdfBuffer.toString("base64")}`
+            });
+        }
 
         res.set({
             "Content-Type": "application/pdf",
