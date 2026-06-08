@@ -140,13 +140,15 @@ app.post("/generate-pdf", async (req, res) => {
             }
         });
 
+        const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
+
         if (shouldReturnBase64) {
             return res.json({
                 success: true,
                 fileName: fileName || "document.pdf",
                 mimeType: "application/pdf",
-                pdfBase64: pdfBuffer.toString("base64"),
-                pdfDataUri: `data:application/pdf;base64,${pdfBuffer.toString("base64")}`
+                pdfBase64: pdfBase64,
+                pdfDataUri: `data:application/pdf;base64,${pdfBase64}`
             });
         }
 
